@@ -1,3 +1,5 @@
+import org.flywaydb.core.Flyway
+import org.flywaydb.core.internal.util.jdbc.DriverDataSource
 import play.api._
 import scalikejdbc._
 import scalikejdbc.config.DBs
@@ -13,36 +15,34 @@ object Global extends GlobalSettings {
     app.configuration.getString("db.default.driver")
       .filter(_ == "org.postgresql.Driver").foreach { driver =>
       //TODO initialize function & trigger
-      PostgresTriggers.initialize
+      PostgresTriggers.migrate(app)
     }
   }
 }
 
 object PostgresTriggers {
-  def initialize = {
-    DBs.setupAll()
-    DB localTx { implicit session =>
-      sql"""
-            create or replace function set_current_account() returns trigger AS $$$$
-            BEGIN
-              delete from accounts where id = NEW.account_id;
-              insert into accounts(id, name, password)
-              values (NEW.account_id, NEW.name, NEW.password);
+  def migrate(app: Application) = {
 
-              return NEW;
-            END;
-            $$$$ LANGUAGE 'plpgsql';
-         """.update.apply;
+    Logger.debug("postgres function/trigger migration files found. sp/migration/default")
+    val(url, user, password) = parseUrl(
+      app.configuration.getString("db.default.url").getOrElse(throw new IllegalArgumentException))
 
-      sql"""
-            drop trigger if EXISTS current_account on account_updates;
-         """.update.apply
+    val flyway = new Flyway
+    flyway.setDataSource(new DriverDataSource(
+      getClass.getClassLoader,
+      app.configuration.getString("db.default.driver").getOrElse(throw new IllegalArgumentException()),
+      url, user.getOrElse(""), password.getOrElse("")))
+    flyway.setLocations("sp/migration/default")
 
-      sql"""
-            create trigger current_account after insert on account_updates
-            for each ROW
-            execute procedure set_current_account();
-         """.update.apply()
-    }
+    flyway.migrate()
+
   }
+
+  // from play-flyway plugin
+  val PostgresFullUrl = "^postgres://([a-zA-Z0-9_]+):([^@]+)@([^/]+)/([^\\s]+)$".r
+  private def parseUrl(url: String) = url match {
+      case PostgresFullUrl(username, password, host, dbname) =>
+        ("jdbc:postgresql://%s/%s".format(host, dbname), Some(username), Some(password))
+      case _ => throw new IllegalArgumentException
+    }
 }
