@@ -24,6 +24,7 @@ val libraries = Seq (
 
 val itLibraries = Seq(
   "org.specs2" %% "specs2" % "2.3.12" % "it",
+  "org.scalikejdbc" %% "scalikejdbc-test" % "2.2.+" % "it",
   "com.typesafe.play" %% "play-test" % play.core.PlayVersion.current % "it"
 )
 

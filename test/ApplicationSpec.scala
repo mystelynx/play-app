@@ -12,7 +12,6 @@ import play.api.test.Helpers._
  * You can mock out a whole application including requests, plugins etc.
  * For more information, consult the wiki.
  */
-@RunWith(classOf[JUnitRunner])
 class ApplicationSpec extends Specification {
 
   "Application" should {
@@ -27,7 +26,7 @@ class ApplicationSpec extends Specification {
 
       DB localTx { implicit session =>
         val id = sql"""insert into account_updates(account_id, name, password, updated_by, updated_at) values(
-              ${java.util.UUID.randomUUID}, 'foo', 'bar',
+              ${java.util.UUID.randomUUID}, 'hoge', 'fuga',
               ${java.util.UUID.randomUUID}, ${DateTime.now})""".updateAndReturnGeneratedKey.apply
 
         sql"""select * from account_updates where id = ${id}""".map(_.toMap).list.apply

@@ -1,16 +1,13 @@
 import org.joda.time.DateTime
-import org.junit.runner._
 import org.specs2.mutable._
-import org.specs2.runner._
 import play.api.test.Helpers._
 import play.api.test._
-import scalikejdbc.config.DBs
+import scalikejdbc._
 
 /**
  * add your integration spec here.
  * An integration test will fire up a whole play application in a real (or headless) browser
  */
-@RunWith(classOf[JUnitRunner])
 class IntegrationSpec extends Specification {
 
   "Application" should {
@@ -24,18 +21,19 @@ class IntegrationSpec extends Specification {
 
     "render the index page" in new WithApplication {
 
-      import scalikejdbc._
+      val account_id = java.util.UUID.randomUUID()
 
-      DB localTx { implicit session =>
+      val actual_account = DB localTx { implicit session =>
         val id = sql"""insert into account_updates(account_id, name, password, updated_by, updated_at) values(
-              ${java.util.UUID.randomUUID}, 'foo', 'bar',
+              ${account_id}, 'foo2', 'bar2',
               ${java.util.UUID.randomUUID}, ${DateTime.now})""".updateAndReturnGeneratedKey.apply
 
-        val events = sql"""select * from account_updates where id = ${id}""".map(_.toMap).list.apply
-        println(events)
-
-        events
+        sql"""select * from accounts where id = ${account_id}""".map(_.toMap).single.apply
       }
+
+      actual_account.get("id") must be_==(account_id)
+      actual_account.get("name") must be_==("foo2")
+      actual_account.get("password") must be_==("bar2")
 
       val home = route(FakeRequest(GET, "/")).get
 
