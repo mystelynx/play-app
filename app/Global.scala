@@ -1,5 +1,8 @@
+import java.io.File
+
 import org.flywaydb.core.Flyway
 import org.flywaydb.core.internal.util.jdbc.DriverDataSource
+import play.api.Mode.Mode
 import play.api._
 import scalikejdbc._
 import scalikejdbc.config.DBs
@@ -9,7 +12,16 @@ import scalikejdbc.config.DBs
  */
 object Global extends GlobalSettings {
 
-  override def onStart(app: Application) = {
+  override def onLoadConfig(config: Configuration, path: File, classLoader: ClassLoader, mode: Mode) = {
+    Logger.debug("onloadconfig!!")
+    Logger.debug(path.getAbsolutePath)
+    Logger.debug(mode.toString)
+    Logger.debug(configuration.toString)
+    config
+  }
+
+  override def beforeStart(app: Application) = {
+    Logger.debug("merge migration scripts db/sp")
     Logger.info("onStart="+app.configuration.getConfig("db"))
     Logger.info("db="+app.configuration.getString("db.default.driver"))
     app.configuration.getString("db.default.driver")
@@ -22,8 +34,6 @@ object Global extends GlobalSettings {
 
 object PostgresTriggers {
   def migrate(app: Application) = {
-
-    Logger.debug("postgres function/trigger migration files found. sp/migration/default")
     val(url, user, password) = parseUrl(
       app.configuration.getString("db.default.url").getOrElse(throw new IllegalArgumentException))
 
@@ -32,10 +42,12 @@ object PostgresTriggers {
       getClass.getClassLoader,
       app.configuration.getString("db.default.driver").getOrElse(throw new IllegalArgumentException()),
       url, user.getOrElse(""), password.getOrElse("")))
-    flyway.setLocations("sp/migration/default")
+
+    // migrationのSQLが複数箇所にあるので自前でやる
+    // 特定のDBの時だけ、、、というのが難しい
+    flyway.setLocations("sp/migration/default", "db/migration/default")
 
     flyway.migrate()
-
   }
 
   // from play-flyway plugin
