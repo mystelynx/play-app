@@ -23,29 +23,25 @@ object Global extends GlobalSettings {
   override def beforeStart(app: Application) = {
     Logger.debug("merge migration scripts db/sp")
     Logger.info("onStart="+app.configuration.getConfig("db"))
-    Logger.info("db="+app.configuration.getString("db.default.driver"))
-    app.configuration.getString("db.default.driver")
-      .filter(_ == "org.postgresql.Driver").foreach { driver =>
-      //TODO initialize function & trigger
-      PostgresTriggers.migrate(app)
-    }
+    Logger.info("db="+app.configuration.getString("db.db.migration.default.driver"))
   }
 }
 
+@deprecated
 object PostgresTriggers {
   def migrate(app: Application) = {
     val(url, user, password) = parseUrl(
-      app.configuration.getString("db.default.url").getOrElse(throw new IllegalArgumentException))
+      app.configuration.getString("db.db.migration.default.url").getOrElse(throw new IllegalArgumentException))
 
     val flyway = new Flyway
     flyway.setDataSource(new DriverDataSource(
       getClass.getClassLoader,
-      app.configuration.getString("db.default.driver").getOrElse(throw new IllegalArgumentException()),
+      app.configuration.getString("db.db.migration.default.driver").getOrElse(throw new IllegalArgumentException()),
       url, user.getOrElse(""), password.getOrElse("")))
 
     // migrationのSQLが複数箇所にあるので自前でやる
     // 特定のDBの時だけ、、、というのが難しい
-    flyway.setLocations("sp/migration/default", "db/migration/default")
+    flyway.setLocations("sp/migration/db.migration.default", "db/migration/default")
 
     flyway.migrate()
   }
