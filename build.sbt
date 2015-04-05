@@ -19,7 +19,10 @@ val libraries = Seq (
   "org.scalikejdbc" %% "scalikejdbc-test" % "2.2.+" % "test",
   "com.github.tototoshi" %% "play-flyway" % "1.2.1",
   "org.mindrot" % "jbcrypt" % "0.3m",
-  "org.postgresql" % "postgresql" % "9.2-1004-jdbc41" % "runtime"
+  "org.postgresql" % "postgresql" % "9.2-1004-jdbc41" % "runtime",
+  "ws.securesocial" %% "securesocial" % "3.0-M3",
+//  "ws.securesocial" %% "ss-testkit" % "master-SNAPSHOT" % "test",
+  "com.typesafe.play" %% "play-mailer" % "2.4.0"
 )
 
 val itLibraries = Seq(
@@ -27,6 +30,8 @@ val itLibraries = Seq(
   "org.scalikejdbc" %% "scalikejdbc-test" % "2.2.+" % "it",
   "com.typesafe.play" %% "play-test" % play.core.PlayVersion.current % "it"
 )
+
+resolvers += Resolver.sonatypeRepo("releases")
 
 libraryDependencies ++= libraries ++ itLibraries
 

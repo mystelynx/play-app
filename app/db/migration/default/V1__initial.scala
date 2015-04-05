@@ -13,7 +13,10 @@ class V1__initial extends MigrationBase {
       create table accounts(
         id uuid primary key,
         name varchar(32) not null,
-        password varchar(256) not null
+        email varchar(256) not null,
+        password varchar(256) not null,
+        status varchar(16),
+        registered_at timestamp
       );
       """.update.apply
 
@@ -22,10 +25,12 @@ class V1__initial extends MigrationBase {
         id bigserial primary key,
         account_id uuid not null,
         name varchar(32) not null,
+        email varchar(256) not null,
         password varchar(256) not null,
-        updated_by uuid not null,
-        updated_at timestamp not null default(current_timestamp),
-        deleted_at timestamp
+        status varchar(16),
+        registered_at timestamp,
+        updated_by uuid,
+        updated_at timestamp
       );
       """.update.apply
     }
@@ -36,8 +41,11 @@ class V1__initial extends MigrationBase {
       create or replace function set_current_account() returns trigger AS $$$$
         BEGIN
           delete from accounts where id = NEW.account_id;
-          insert into accounts(id, name, password)
-            values (NEW.account_id, NEW.name, NEW.password);
+
+          if NEW.status != 'cancelled' then
+          insert into accounts(id, name, email, password)
+            values (NEW.account_id, NEW.name, NEW.email, NEW.password);
+          end;
 
           return NEW;
         END;
