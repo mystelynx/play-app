@@ -8,6 +8,7 @@ import play.api.mvc._
 import play.api.mvc.Security._
 import scalikejdbc._
 import securesocial.core.providers.MailToken
+import securesocial.core.providers.utils.PasswordHasher
 import securesocial.core.services._
 import securesocial.core.services.SaveMode._
 import securesocial.core._
@@ -27,7 +28,25 @@ class Application(override implicit val env: RuntimeEnvironment[User]) extends S
 case class User(id: UUID, profile: BasicProfile)
 class MyUserService extends UserService[User] {
 
-  override def find(providerId: String, userId: String): Future[Option[BasicProfile]] = ???
+  // ログイン時に呼ばれる
+  override def find(providerId: String, userId: String): Future[Option[BasicProfile]] =
+  // いまのところUsernamePasswordによる認証しかしてないのでproviderIdは無視
+    Future.successful {
+      val u = DB readOnly { implicit session =>
+        sql"""
+              select id, name, email, password, status from accounts
+              where email = $userId
+          """
+          .map(rs => BasicProfile(
+          providerId, rs.string("email"), None, None,
+          rs.stringOpt("name"), rs.stringOpt("email"), None, AuthenticationMethod.UserPassword,
+          None, None, Some(PasswordInfo(PasswordHasher.id, rs.string("password"), None)))
+          ).single.apply
+      }
+      Logger.debug(s"userId=$userId found=$u")
+
+      u
+    }
 
   // サインアップページでメールアドレスを送信したときに呼ばれる
   // まだアカウントがない場合(None)はサインアップメールが送信される
@@ -37,7 +56,7 @@ class MyUserService extends UserService[User] {
       DB readOnly { implicit session => // move to repository
         sql"""select id, name, email, password, status from accounts where email = $email"""
           .map(rs => BasicProfile(
-            providerId, rs.string("id"), None, None,
+            providerId, email, None, None,
             rs.stringOpt("name"), rs.stringOpt("email"), None, AuthenticationMethod.UserPassword,
           None, None, Some(PasswordInfo("bcrypt", rs.string("password"), None)))
           ).single.apply
@@ -62,15 +81,25 @@ class MyUserService extends UserService[User] {
                   select id from accounts where email = ${profile.userId}
             """.map(rs => UUID.fromString(rs.string("id"))).single.apply
 
-            sql"""
-                insert into account_updates (account_id, name, email, password, status)
-                  values(${accountId}, ${profile.fullName}, ${profile.email},
-                  ${profile.passwordInfo.map(_.password)}, ${"running"})
-            """.update.apply
+          sql"""
+              insert into account_updates (account_id, name, email, password, status)
+                values(${accountId}, ${profile.fullName}, ${profile.email},
+                ${profile.passwordInfo.map(_.password)}, ${"running"})
+          """.update.apply
 
-            User(accountId, profile)
+          User(accountId, profile)
         }
-        case (profile, LoggedIn) => ???
+        case (profile, LoggedIn) => {
+          // たぶんログイン日時等を記録するためにログイン時にsaveが呼ばれる
+          // いまは未実装
+
+          val Some(accountId) =
+            sql"""
+                  select id from accounts where email = ${profile.userId}
+            """.map(rs => UUID.fromString(rs.string("id"))).single.apply
+
+          User(accountId, profile)
+        }
         case (profile, PasswordChange) => ???
       }
     }

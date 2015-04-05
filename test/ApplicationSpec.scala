@@ -30,24 +30,14 @@ class ApplicationSpec extends Specification {
       route(FakeRequest(GET, "/boum")) must beNone
     }
 
-//    "render the index page" in new WithLoggedInApplication {
-//
-//      import scalikejdbc._
-//
-//      DB localTx { implicit session =>
-//        val id = sql"""insert into account_updates(account_id, name, password, updated_by, updated_at) values(
-//              ${java.util.UUID.randomUUID}, 'hoge', 'fuga',
-//              ${java.util.UUID.randomUUID}, ${DateTime.now})""".updateAndReturnGeneratedKey.apply
-//
-//        sql"""select * from account_updates where id = ${id}""".map(_.toMap).list.apply
-//      }
-//
-//      val home = route(FakeRequest(GET, "/").withCookies(LoginHelper.cookie)).get
-//
-//      status(home) must equalTo(OK)
-//      contentType(home) must beSome.which(_ == "text/html")
-//      contentAsString(home) must contain ("Your new application is ready.")
-//    }
+    "render the index page" in new WithLoggedInApplication(un = "test-ss@urau.la", pw = "password") {
+
+      val home = route(FakeRequest(GET, "/").withCookies(LoginHelper.cookie)).get
+
+      status(home) must equalTo(OK)
+      contentType(home) must beSome.which(_ == "text/html")
+      contentAsString(home) must contain ("Your new application is ready.")
+    }
 
     "サインアップページを表示する" in new WithApplication {
       // exec
