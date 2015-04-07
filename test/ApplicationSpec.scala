@@ -1,21 +1,22 @@
 import java.util.UUID
+import javax.mail.Multipart
 
+import com.icegreen.greenmail.util._
+import controllers.{MyUserService, User}
 import helpers.{LoginHelper, WithLoggedInApplication}
 import org.joda.time.DateTime
+import org.specs2.execute.{Result, AsResult}
 import org.specs2.mutable._
-import org.specs2.runner._
-import org.junit.runner._
-import play.api.libs.mailer.MailerPlugin
 
 import play.api.test._
 import play.api.test.Helpers._
 import play.filters.csrf.CSRF
-import securesocial.controllers.Registration
-import securesocial.core.RuntimeEnvironment
+import securesocial.controllers._
+import securesocial.core.RuntimeEnvironment.Default
+import securesocial.core.services._
+import securesocial.core._
 
 import scalikejdbc._
-import securesocial.core.providers.utils.Mailer
-
 
 /**
  * Add your spec here.
@@ -48,18 +49,33 @@ class ApplicationSpec extends Specification {
       contentType(signup) must beSome.which(_ == "text/html")
     }
 
-    "リクエストされたメールアドレスに対し適切なメールを送信する" in new WithApplication {
+    abstract class WithApplicationAndMailer(val greenMail: GreenMail) extends WithApplication {
+      override def around[T: AsResult](t : => T): Result = super.around {
+        greenMail.start()
+        val result = t
+
+        result
+      }
+    }
+
+    "リクエストされたメールアドレスに対し適切なメールを送信する" in new WithApplicationAndMailer(new GreenMail(ServerSetupTest.SMTP)) {
       // UserService.findByEmailAndProvider == None -> 新規
       // UserService.findByEmailAndProvider == Option[BasicProfile] -> パスワードリセット
 
       // setup
       val csrfToken = CSRF.SignedTokenProvider.generateToken
+      val controller = new BaseRegistration[User]() {
+        override implicit val env: RuntimeEnvironment[User] = new Default[User] {
+          override val userService: UserService[User] = new MyUserService
+        }
+      }
 
       // when
-      val signup = route(FakeRequest(POST, "/auth/signup")
+      val signup = controller.handleStartSignUp(FakeRequest(POST, "/auth/signup")
         .withFormUrlEncodedBody("email" -> "test@urau.la", "csrfToken" -> csrfToken)
         .withSession("csrfToken" -> csrfToken)
-      ).get
+      )
+      greenMail.waitForIncomingEmail(1) // メールが送出されるのを待つ
 
       // then
       status(signup) must be_==(SEE_OTHER)
@@ -67,6 +83,20 @@ class ApplicationSpec extends Specification {
       cookies(signup).apply("PLAY_FLASH").value must be_==(
         "success=Thank+you.+Please+check+your+email+for+further+instructions&email=test%40urau.la"
       )
+
+      val mail = greenMail.getReceivedMessages()(0)
+      mail.getDataHandler.getContentType must startWith("multipart/mixed;")
+
+      val part = mail.getContent.asInstanceOf[Multipart]
+      part.getCount must be_==(1)
+
+      val part0 = part.getBodyPart(0)
+      part0.getContentType must be_==("text/html; charset=UTF-8")
+      part0.getContent.asInstanceOf[String] must contain("/auth/signup/")
+
+      val tokenRegex = "//auth/signup/([a-f0-9-]{36})".r
+      val token = tokenRegex.findFirstMatchIn(part0.getContent.toString).map(_.group(1))
+      println(s"token=$token")
     }
 
     "トークンありサインアップページを表示する" in new WithApplication {
