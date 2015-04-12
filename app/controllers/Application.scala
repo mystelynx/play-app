@@ -2,13 +2,9 @@ package controllers
 
 import java.util.UUID
 
-import model.User
-import org.joda.time.DateTime
 import play.api.Logger
 import play.api.mvc._
-import play.api.mvc.Security._
 import scalikejdbc._
-import securesocial.core.SecureSocial._
 import securesocial.core.providers.MailToken
 import securesocial.core.providers.utils.PasswordHasher
 import securesocial.core.services._
@@ -17,35 +13,53 @@ import securesocial.core._
 import scala.concurrent.ExecutionContext.Implicits._
 import scala.concurrent.Future
 
-class Application(override implicit val env: RuntimeEnvironment[model.User]) extends SecureSocial[model.User] {
+/**
+ * SecureSocialを利用したコントローラ
+ *
+ * @param env
+ */
+class SecuredController(override val env: RuntimeEnvironment[model.User])
+  extends SecureSocial[model.User] {
 
-//  def index = AuthenticatedAction { credentials => permission => implicit request =>
-
-  def index = TxSecuredAction { implicit txRequest =>
-    println(txRequest.securedRequest.asInstanceOf[SecuredRequest[_]].authenticator)
-    Ok(views.html.index("Your new application is ready."))
-  }
-
-  val TxSecuredAction = SecuredAction andThen TxTransformer
-}
-
-class SampleController(override implicit val env: RuntimeEnvironment[model.User]) extends Application {
-
-  def sample = TxSecuredAction { implicit txRequest =>
-    Ok(views.html.index("Your new application is ready!!!!"))
-  }
-}
-
-case class TxRequest[A](securedRequest: Request[A], dbSession: DBSession)
-  extends WrappedRequest[A](securedRequest)
-object TxTransformer extends ActionTransformer[Request, TxRequest] {
-  override protected def transform[A](request: Request[A]): Future[TxRequest[A]] = {
-    DB localTx { implicit session =>
-      Future(TxRequest[A](request, session))
+  /**
+   * SecuredAction実行時に自動的にトランザクションを生成するアクション
+   *
+   * @param f
+   * @return
+   */
+  def TxSecuredAction(f: SecuredRequest[AnyContent] => DBSession => Result): Action[AnyContent] = {
+    SecuredAction { request =>
+      Logger.debug(s"calling by ${request.authenticator}")
+      DB localTx { session =>
+        f(request)(session)
+      }
     }
   }
 }
 
+/**
+ * サンプルApplication
+ * SecuredControllerのサブクラスとすることで`TxSecuredAction`が利用可能となる
+ *
+ * @param env
+ */
+class Application(override val env: RuntimeEnvironment[model.User]) extends SecuredController(env) {
+
+  def sample = TxSecuredAction { implicit request => implicit session =>
+
+    println(request.user)
+    println(request.authenticator)
+    println(request.request.body)
+
+    sql"select * from users".map(_.toMap).list.apply
+    sql"delete from users".update.apply
+
+    Ok(views.html.index("Your new application is ready!!!!"))
+  }
+}
+
+
+@deprecated
 class MyUserService extends UserService[model.User] {
 
   // ログイン時に呼ばれる

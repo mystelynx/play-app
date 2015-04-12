@@ -2,9 +2,12 @@ package helpers
 
 import java.lang.reflect.Constructor
 
+import com.icegreen.greenmail.util.{ServerSetupTest, GreenMail}
 import model.User
 import org.joda.time.DateTime
-import play.api.mvc.{RequestHeader, Result}
+import org.specs2.execute.{Result => SpecResult, AsResult}
+import play.api.mvc.{RequestHeader, Result => ApiResult}
+import play.api.test.{FakeApplication, WithApplication}
 import play.api.{Logger, Application, GlobalSettings}
 import securesocial.core.authenticator.{Authenticator, AuthenticatorBuilder, StoreBackedAuthenticator, AuthenticatorStore}
 import securesocial.core.providers.{MailToken, UsernamePasswordProvider}
@@ -17,13 +20,51 @@ import scala.reflect.ClassTag
 import scala.concurrent.ExecutionContext.Implicits.global
 
 /**
- * Created by tomohiro_urakawa on 15/04/12.
+ * 認証済みの状態でテスト用アプリを立ち上げる
+ *
+ * @param by 認証ユーザ
+ * @param storedTokens 有効なメールトークン
  */
+abstract class WithAuthenticatedApplication(
+                                             val by: Option[model.User] = Some(model.User("fake-man")),
+                                             val storedTokens: Set[String] = Set())
+  extends WithApplication(app = FakeApplication(
+    withGlobal = Some(FakeGlobal(by, storedTokens)))) {
 
-case class FakeGlobal(user: model.User) extends GlobalSettings {
+  lazy val greenMail = new GreenMail(ServerSetupTest.SMTP)
 
+  override def around[T: AsResult](t: => T): SpecResult = super.around {
+    try {
+      greenMail.start
+      t
+    } finally {
+      greenMail.stop
+    }
+  }
+}
+
+/**
+ * 未認証の状態でテスト用アプリを立ち上げる
+ *
+ * @param storedTokens 有効なメールトークン
+ */
+abstract class WithUnauthenticatedApplication(
+                                             override val storedTokens: Set[String] = Set()
+                                               )
+  extends WithAuthenticatedApplication(None, storedTokens)
+
+/**
+ * テスト用のGlobal
+ *
+ * @param user 認証対象のユーザ
+ * @param storedTokens 有効なメールトークン
+ */
+case class FakeGlobal(user: Option[model.User], storedTokens: Set[String]) extends GlobalSettings {
+
+  // Fakeであることが分かるようログに出力しておく
   override def onStart(app: Application) = Logger.debug("running with FakeGlobal.")
 
+  // for securesocial
   override def getControllerInstance[A](controllerClass: Class[A]): A = {
     val instance  = controllerClass.getConstructors.find { c =>
       val params = c.getParameterTypes
@@ -34,10 +75,11 @@ case class FakeGlobal(user: model.User) extends GlobalSettings {
     instance.getOrElse(super.getControllerInstance(controllerClass))
   }
 
+  // for securesocial
   object ApplicationRuntimeEnvironment extends RuntimeEnvironment.Default[model.User] {
     protected override def include(p: IdentityProvider) = p.id -> p
 
-    override lazy val userService: UserService[model.User] = new FakeUserService
+    override lazy val userService: UserService[model.User] = new FakeUserService(storedTokens)
     override lazy val providers = ListMap(
       include(new UsernamePasswordProvider[model.User](
         userService, None, viewTemplates, passwordHashers))
@@ -49,20 +91,46 @@ case class FakeGlobal(user: model.User) extends GlobalSettings {
   }
 }
 
-class FakeUserService extends UserService[model.User] {
+/**
+ * テスト用ユーザサービス
+ *
+ * @param storedTokens 有効なメールトークン
+ */
+class FakeUserService(var storedTokens: Set[String]) extends UserService[model.User] {
   override def find(providerId: String, userId: String): Future[Option[BasicProfile]] = ???
 
-  override def findByEmailAndProvider(email: String, providerId: String): Future[Option[BasicProfile]] = ???
+  override def findByEmailAndProvider(email: String, providerId: String): Future[Option[BasicProfile]] =
+    Future.successful(None)
 
-  override def deleteToken(uuid: String): Future[Option[MailToken]] = ???
+  override def deleteToken(uuid: String): Future[Option[MailToken]] = Future.successful {
+    None
+  }
 
   override def link(current: User, to: BasicProfile): Future[User] = ???
 
   override def passwordInfoFor(user: User): Future[Option[PasswordInfo]] = ???
 
-  override def save(profile: BasicProfile, mode: SaveMode): Future[User] = ???
+  override def save(profile: BasicProfile, mode: SaveMode): Future[model.User] = Future.successful {
+    mode match {
+      case SaveMode.SignUp => {
+        //TODO save to db
+        model.User(profile.fullName.get)
+      }
+      case _ => ???
+    }
+  }
 
-  override def findToken(token: String): Future[Option[MailToken]] = ???
+  override def findToken(token: String): Future[Option[MailToken]] = Future.successful {
+    storedTokens.find(_ == token).map { found =>
+      MailToken(
+        uuid = found,
+        email = "test@urau.la",
+        creationTime = DateTime.now.minusDays(3),
+        expirationTime = DateTime.now.plusDays(3),
+        isSignUp = true
+      )
+    }
+  }
 
   override def deleteExpiredTokens(): Unit = ???
 
@@ -71,6 +139,17 @@ class FakeUserService extends UserService[model.User] {
   override def saveToken(token: MailToken): Future[MailToken] = ???
 }
 
+/**
+ * 認証素通りユーザ
+ *
+ * @param id
+ * @param user
+ * @param expirationDate
+ * @param lastUsed
+ * @param creationDate
+ * @param store
+ * @tparam U
+ */
 case class PassThroughAuthenticator[U](
                                         id: String,
                                         user: U,
@@ -90,10 +169,17 @@ case class PassThroughAuthenticator[U](
   // never timed out
   override val idleTimeoutInMinutes: Int = Int.MaxValue
 
-  override def starting(result: Result): Future[Result] = Future.successful { result }
+  override def starting(result: ApiResult): Future[ApiResult] = Future.successful { result }
+
+  override def toString = s"id: $id, user: $user, lastUsedAt: $lastUsed createdAt: $creationDate, expiresAt: $expirationDate"
 }
 
-class PassThroughAuthenticatorBuilder(val user: model.User)
+/**
+ * 認証素通りユーザのビルダー
+ *
+ * @param user
+ */
+class PassThroughAuthenticatorBuilder(val user: Option[model.User])
   extends AuthenticatorBuilder[model.User] {
 
   override val id: String = "pass-through"
@@ -102,20 +188,26 @@ class PassThroughAuthenticatorBuilder(val user: model.User)
 
   override def fromRequest(request: RequestHeader): Future[Option[Authenticator[model.User]]] =
     Future {
-      Some(PassThroughAuthenticator(
-        id = "pass-through",
-        user = user,
-        expirationDate = DateTime.now.plusYears(1),
-        lastUsed = DateTime.now,
-        creationDate = DateTime.now.minusSeconds(10),
-        store = new FakeAuthenticatorStore
-      ))
+      user.map { u =>
+        PassThroughAuthenticator(
+          id = "pass-through",
+          user = u,
+          expirationDate = DateTime.now.plusYears(1),   // 期限は１年後
+          lastUsed = DateTime.now,                      //
+          creationDate = DateTime.now.minusSeconds(10), // １０秒前に作成された
+          store = new FakeAuthenticatorStore
+        )
+      }
     }
 
   override def fromUser(user: User): Future[Authenticator[User]] = ???
 }
 
-
+/**
+ * 認証素通りユーザのためのデータストア
+ *
+ * @tparam U ユーザ
+ */
 class FakeAuthenticatorStore[U] extends AuthenticatorStore[PassThroughAuthenticator[U]] {
 
   var authenticators: Seq[PassThroughAuthenticator[U]] = Nil

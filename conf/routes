@@ -3,8 +3,7 @@
 # ~~~~
 
 # Home page
-GET        /                    @controllers.Application.index
-GET         /sample             @controllers.SampleController.sample
+GET         /             @controllers.Application.sample
 
 # SecureSocial
 ->         /auth                securesocial.Routes
