@@ -2,11 +2,13 @@ package controllers
 
 import java.util.UUID
 
+import model.User
 import org.joda.time.DateTime
 import play.api.Logger
 import play.api.mvc._
 import play.api.mvc.Security._
 import scalikejdbc._
+import securesocial.core.SecureSocial._
 import securesocial.core.providers.MailToken
 import securesocial.core.providers.utils.PasswordHasher
 import securesocial.core.services._
@@ -15,18 +17,36 @@ import securesocial.core._
 import scala.concurrent.ExecutionContext.Implicits._
 import scala.concurrent.Future
 
-class Application(override implicit val env: RuntimeEnvironment[User]) extends SecureSocial[User] {
+class Application(override implicit val env: RuntimeEnvironment[model.User]) extends SecureSocial[model.User] {
 
 //  def index = AuthenticatedAction { credentials => permission => implicit request =>
 
-  def index = SecuredAction {
+  def index = TxSecuredAction { implicit txRequest =>
+    println(txRequest.securedRequest.asInstanceOf[SecuredRequest[_]].authenticator)
     Ok(views.html.index("Your new application is ready."))
   }
 
+  val TxSecuredAction = SecuredAction andThen TxTransformer
 }
 
-case class User(id: UUID, profile: BasicProfile)
-class MyUserService extends UserService[User] {
+class SampleController(override implicit val env: RuntimeEnvironment[model.User]) extends Application {
+
+  def sample = TxSecuredAction { implicit txRequest =>
+    Ok(views.html.index("Your new application is ready!!!!"))
+  }
+}
+
+case class TxRequest[A](securedRequest: Request[A], dbSession: DBSession)
+  extends WrappedRequest[A](securedRequest)
+object TxTransformer extends ActionTransformer[Request, TxRequest] {
+  override protected def transform[A](request: Request[A]): Future[TxRequest[A]] = {
+    DB localTx { implicit session =>
+      Future(TxRequest[A](request, session))
+    }
+  }
+}
+
+class MyUserService extends UserService[model.User] {
 
   // ログイン時に呼ばれる
   override def find(providerId: String, userId: String): Future[Option[BasicProfile]] =
@@ -66,11 +86,11 @@ class MyUserService extends UserService[User] {
   override def deleteToken(uuid: String): Future[Option[MailToken]] =
     Future.successful(None) // save()で保存済みであるためこの処理では何もしない
 
-  override def link(current: User, to: BasicProfile): Future[User] = ???
+  override def link(current: model.User, to: BasicProfile): Future[model.User] = ???
 
-  override def passwordInfoFor(user: User): Future[Option[PasswordInfo]] = ???
+  override def passwordInfoFor(user: model.User): Future[Option[PasswordInfo]] = ???
 
-  override def save(profile: BasicProfile, mode: SaveMode): Future[User] = Future.successful {
+  override def save(profile: BasicProfile, mode: SaveMode): Future[model.User] = Future {
 
     DB localTx { implicit session => //TODO move to repository
       (profile, mode) match {
@@ -87,7 +107,7 @@ class MyUserService extends UserService[User] {
                 ${profile.passwordInfo.map(_.password)}, ${"running"})
           """.update.apply
 
-          User(accountId, profile)
+          ???
         }
         case (profile, LoggedIn) => {
           // たぶんログイン日時等を記録するためにログイン時にsaveが呼ばれる
@@ -98,7 +118,7 @@ class MyUserService extends UserService[User] {
                   select id from accounts where email = ${profile.userId}
             """.map(rs => UUID.fromString(rs.string("id"))).single.apply
 
-          User(accountId, profile)
+          ???
         }
         case (profile, PasswordChange) => ???
       }
@@ -120,20 +140,18 @@ class MyUserService extends UserService[User] {
 
   override def deleteExpiredTokens(): Unit = ???
 
-  override def updatePasswordInfo(user: User, info: PasswordInfo): Future[Option[BasicProfile]] = ???
+  override def updatePasswordInfo(user: model.User, info: PasswordInfo): Future[Option[BasicProfile]] = ???
 
-  override def saveToken(token: MailToken): Future[MailToken] = {
-//    Logger.debug(s"!saveToken=$token")
-//
-//    DB localTx { implicit session =>
-//      sql"""
-//            insert into account_updates()
-//            values(${token.uuid}, ${token.email}, ${token.creationTime},
-//            ${token.expirationTime}, ${token.isSignUp})
-//         """.update.apply
-//    }
-//
-//    Future.successful(token)
+  override def saveToken(token: MailToken): Future[MailToken] = Future {
+
+    DB localTx { implicit session =>
+      sql"""
+            insert into account_updates()
+            values(${token.uuid}, ${token.email}, ${token.creationTime},
+            ${token.expirationTime}, ${token.isSignUp})
+         """.update.apply
+    }
+
     ???
   }
 }

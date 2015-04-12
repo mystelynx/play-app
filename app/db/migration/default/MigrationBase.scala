@@ -17,8 +17,8 @@ trait MigrationBase extends JdbcMigration {
   def migrateAlways(block: => Unit)(implicit session: DBSession) = block
 
   def migrateOn(product: Symbol)(block: => Unit)(implicit session: DBSession) =
-    if (product == session.connection.getMetaData.getDatabaseProductName)
+    if (product.name == session.connection.getMetaData.getDatabaseProductName)
       block
     else
-      Logger.info(s"product unmatched. expected: $product actual: ${session.connection.getMetaData.getDatabaseProductName}")
+      Logger.info(s"skipping $product migration. current database is ${session.connection.getMetaData.getDatabaseProductName}")
 }

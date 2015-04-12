@@ -21,7 +21,7 @@ val libraries = Seq (
   "org.mindrot" % "jbcrypt" % "0.3m",
   "org.postgresql" % "postgresql" % "9.2-1004-jdbc41" % "runtime",
   "ws.securesocial" %% "securesocial" % "3.0-M3",
-//  "ws.securesocial" %% "ss-testkit" % "master-SNAPSHOT" % "test",
+//  "ws.securesocial" %% "testkit" % "master-SNAPSHOT" % "test",
   "com.typesafe.play" %% "play-mailer" % "2.4.0",
   "com.icegreen" % "greenmail" % "1.4.0" % "test"
 )
@@ -32,7 +32,7 @@ val itLibraries = Seq(
   "com.typesafe.play" %% "play-test" % play.core.PlayVersion.current % "it"
 )
 
-resolvers += Resolver.sonatypeRepo("releases")
+resolvers += Resolver.sonatypeRepo("snapshots")
 
 libraryDependencies ++= libraries ++ itLibraries
 
@@ -46,4 +46,4 @@ fork in IntegrationTest := true
 
 javaOptions in IntegrationTest += "-Dconfig.resource=application.it.conf"
 
-javaSource in IntegrationTest := baseDirectory( _ / "it").value
+javaSource in IntegrationTest := baseDirectory( _ / "test-integration").value
