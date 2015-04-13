@@ -3,7 +3,8 @@
 # ~~~~
 
 # Home page
-GET         /             @controllers.Application.sample
+GET        /                    @controllers.Application.sample
+POST        /                   @controllers.Application.elpmas
 
 # SecureSocial
 ->         /auth                securesocial.Routes

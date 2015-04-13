@@ -3,6 +3,9 @@ package controllers
 import java.util.UUID
 
 import play.api.Logger
+import play.api.libs.json.Reads._
+import play.api.libs.json._
+import play.api.libs.functional.syntax._
 import play.api.mvc._
 import scalikejdbc._
 import securesocial.core.providers.MailToken
@@ -12,6 +15,7 @@ import securesocial.core.services.SaveMode._
 import securesocial.core._
 import scala.concurrent.ExecutionContext.Implicits._
 import scala.concurrent.Future
+import scala.util.Try
 
 /**
  * SecureSocialを利用したコントローラ
@@ -27,7 +31,20 @@ class SecuredController(override val env: RuntimeEnvironment[model.User])
    * @param f
    * @return
    */
-  def TxSecuredAction(f: SecuredRequest[AnyContent] => DBSession => Result): Action[AnyContent] = {
+  def TxSecuredActionWithBody[JSON](f: SecuredRequest[AnyContent] => JSON => DBSession => Result)(implicit reads: Reads[JSON]): Action[AnyContent] = {
+    SecuredAction { request =>
+      Logger.debug(s"calling by ${request.authenticator}")
+      request.body.asJson.map(_.validate[JSON]) match {
+        case Some(JsSuccess(validated, path)) => DB localTx { session =>
+          Logger.debug(s"$validated")
+          f(request)(validated)(session)
+        }
+        case _ => println(s"${request.body}"); BadRequest("")
+      }
+    }
+  }
+
+  def TxSecuredAction(f: SecuredRequest[AnyContent] =>  DBSession => Result): Action[AnyContent] = {
     SecuredAction { request =>
       Logger.debug(s"calling by ${request.authenticator}")
       DB localTx { session =>
@@ -45,11 +62,29 @@ class SecuredController(override val env: RuntimeEnvironment[model.User])
  */
 class Application(override val env: RuntimeEnvironment[model.User]) extends SecuredController(env) {
 
-  def sample = TxSecuredAction { implicit request => implicit session =>
+
+  implicit val ar: Reads[AccountUpdateRequest] = (
+    (__ \ "name").readNullable[String] and
+      (__ \ "age").readNullable[Int]
+    )(AccountUpdateRequest)
+
+  def sample = TxSecuredAction { request => implicit session =>
 
     println(request.user)
     println(request.authenticator)
-    println(request.request.body)
+
+    sql"select * from users".map(_.toMap).list.apply
+    sql"delete from users".update.apply
+
+    Ok(views.html.index("Your new application is ready!!!!"))
+  }
+
+
+  def elpmas = TxSecuredActionWithBody[AccountUpdateRequest] { request => validated => implicit session =>
+
+    println(request.user)
+    println(request.authenticator)
+    println(validated)
 
     sql"select * from users".map(_.toMap).list.apply
     sql"delete from users".update.apply
@@ -57,6 +92,8 @@ class Application(override val env: RuntimeEnvironment[model.User]) extends Secu
     Ok(views.html.index("Your new application is ready!!!!"))
   }
 }
+
+case class AccountUpdateRequest(name: Option[String], age: Option[Int])
 
 
 @deprecated
