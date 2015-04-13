@@ -30,7 +30,11 @@ class SecuredController(override val env: RuntimeEnvironment[model.User])
   case class ErrorHandling[A](action: Action[A])
                                 (recovering: PartialFunction[Throwable, Result]) extends Action[A] {
     def apply(request: Request[A]): Future[Result] = action(request) recover {
+      // 個別で処理しなければならない例外はこっちで
       recovering
+    } recover {
+      // 共通で処理できる例外はこっちで
+      case ex: Exception => Logger.error(s"$ex"); InternalServerError("(T-T)")
     }
 
     lazy val parser = action.parser
@@ -100,7 +104,7 @@ class Application(override val env: RuntimeEnvironment[model.User]) extends Secu
 
         request.body match {
           case Success(JsSuccess(value, path)) => println(value)
-          case _ => throw new IllegalArgumentException("parse error")
+          case _ => throw new IllegalStateException("parse error")
         }
 
         sql"select * from users".map(_.toMap).list.apply
@@ -111,7 +115,7 @@ class Application(override val env: RuntimeEnvironment[model.User]) extends Secu
   } {
     // bodyParser内で発生した例外については相変わらず取れない、、、
     // あくまでAction内で発生した例外のみだが、処理すべき例外を列挙できる
-    case ex: Exception => Logger.warn(s"$ex"); Conflict("hoge")
+    case ex: IllegalArgumentException => Logger.warn(s"$ex"); Conflict("hoge")
   }
 }
 
