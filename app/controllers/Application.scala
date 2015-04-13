@@ -3,11 +3,13 @@ package controllers
 import java.util.UUID
 
 import play.api.Logger
+import play.api.libs.iteratee.Iteratee
 import play.api.libs.json.Reads._
 import play.api.libs.json._
 import play.api.libs.functional.syntax._
 import play.api.mvc._
 import scalikejdbc._
+import securesocial.core.java.SecuredAction
 import securesocial.core.providers.MailToken
 import securesocial.core.providers.utils.PasswordHasher
 import securesocial.core.services._
@@ -25,33 +27,41 @@ import scala.util.{Failure, Success, Try}
 class SecuredController(override val env: RuntimeEnvironment[model.User])
   extends SecureSocial[model.User] {
 
+  case class ErrorHandling[A](action: Action[A])
+                                (recovering: PartialFunction[Throwable, Result]) extends Action[A] {
+    def apply(request: Request[A]): Future[Result] = action(request) recover {
+      recovering
+    }
+
+    lazy val parser = action.parser
+  }
+
   /**
    * SecuredAction実行時に自動的にトランザクションを生成するアクション
    *
    * @param f
    * @return
    */
-  def TxSecuredActionWithBody[JSON](f: SecuredRequest[AnyContent] => JSON => DBSession => Result)(implicit reads: Reads[JSON]): Action[AnyContent] = {
-    SecuredAction { request =>
-      Logger.debug(s"calling by ${request.authenticator}")
-      Try(Json.parse(request.body.asText.getOrElse(""))).map(_.validate[JSON]) match {
-        case Success(JsSuccess(validated, path)) => DB localTx { session =>
-          f(request)(validated)(session)
+  def TxSecuredAction[A](bp: BodyParser[A])
+                        (f: SecuredRequest[A] => DBSession => Result): Action[A] = {
+      SecuredAction(bp) { request =>
+        Logger.debug(s"calling by ${request.authenticator}")
+        DB localTx { session =>
+          f(request)(session)
         }
-        case Success(JsError(errors)) => BadRequest(s"parse error: $errors")
-        case _ => BadRequest("not json?")
       }
-    }
   }
 
-  def TxSecuredAction(f: SecuredRequest[AnyContent] =>  DBSession => Result): Action[AnyContent] = {
-    SecuredAction { request =>
-      Logger.debug(s"calling by ${request.authenticator}")
-      DB localTx { session =>
-        f(request)(session)
-      }
-    }
+  def tryJsonParser[J](implicit reads: Reads[J]) = BodyParsers.parse.tolerantText.map { txt =>
+    Try(Json.parse(txt).validate[J])
   }
+}
+
+class ErrorHandlingAction[A] extends ActionBuilder[Request] {
+  override def invokeBlock[A](request: Request[A], block: Request[A] => Future[Result]): Future[Result] =
+    block(request) recover {
+      ???
+    }
 }
 
 /**
@@ -68,7 +78,7 @@ class Application(override val env: RuntimeEnvironment[model.User]) extends Secu
       (__ \ "age").read[Int]
     )(AccountUpdateRequest)
 
-  def sample = TxSecuredAction { request => implicit session =>
+  def sample = TxSecuredAction(parse.empty) { implicit request => implicit session =>
 
     println(request.user)
     println(request.authenticator)
@@ -80,16 +90,28 @@ class Application(override val env: RuntimeEnvironment[model.User]) extends Secu
   }
 
 
-  def elpmas = TxSecuredActionWithBody[AccountUpdateRequest] { request => validated => implicit session =>
+  def elpmas = ErrorHandling {
+    TxSecuredAction(tryJsonParser[AccountUpdateRequest]) {
+      implicit request => implicit session =>
 
-    println(request.user)
-    println(request.authenticator)
-    println(validated)
+        println(request.user)
+        println(request.authenticator)
+        println(request.body)
 
-    sql"select * from users".map(_.toMap).list.apply
-    sql"delete from users".update.apply
+        request.body match {
+          case Success(JsSuccess(value, path)) => println(value)
+          case _ => throw new IllegalArgumentException("parse error")
+        }
 
-    Ok(views.html.index("Your new application is ready!!!!"))
+        sql"select * from users".map(_.toMap).list.apply
+        sql"delete from users".update.apply
+
+        Ok(views.html.index("Your new application is ready!!!!"))
+    }
+  } {
+    // bodyParser内で発生した例外については相変わらず取れない、、、
+    // あくまでAction内で発生した例外のみだが、処理すべき例外を列挙できる
+    case ex: Exception => Logger.warn(s"$ex"); Conflict("hoge")
   }
 }
 
