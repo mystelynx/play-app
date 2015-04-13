@@ -8,6 +8,7 @@ import org.joda.time.DateTime
 import org.specs2.execute.{Result, AsResult}
 import org.specs2.mutable._
 import play.api.Application
+import play.api.http.ContentTypes
 import play.api.libs.json.Json
 
 import play.api.test._
@@ -44,8 +45,9 @@ class ApplicationSpec extends Specification {
 
     "render the index page(post)" in new WithAuthenticatedApplication {
 
-      val home = route(FakeRequest(POST, "/").withJsonBody(Json.obj("name" -> "hoge"))).get
+      val home = route(FakeRequest(POST, "/").withTextBody("""{"ages": 200}""").withHeaders(CONTENT_TYPE->ContentTypes.JSON)).get
 
+      println(contentAsString(home))
       status(home) must equalTo(OK)
       contentType(home) must beSome.which(_ == "text/html")
       contentAsString(home) must contain ("Your new application is ready!!!")

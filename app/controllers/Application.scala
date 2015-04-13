@@ -15,7 +15,7 @@ import securesocial.core.services.SaveMode._
 import securesocial.core._
 import scala.concurrent.ExecutionContext.Implicits._
 import scala.concurrent.Future
-import scala.util.Try
+import scala.util.{Failure, Success, Try}
 
 /**
  * SecureSocialを利用したコントローラ
@@ -34,12 +34,12 @@ class SecuredController(override val env: RuntimeEnvironment[model.User])
   def TxSecuredActionWithBody[JSON](f: SecuredRequest[AnyContent] => JSON => DBSession => Result)(implicit reads: Reads[JSON]): Action[AnyContent] = {
     SecuredAction { request =>
       Logger.debug(s"calling by ${request.authenticator}")
-      request.body.asJson.map(_.validate[JSON]) match {
-        case Some(JsSuccess(validated, path)) => DB localTx { session =>
-          Logger.debug(s"$validated")
+      Try(Json.parse(request.body.asText.getOrElse(""))).map(_.validate[JSON]) match {
+        case Success(JsSuccess(validated, path)) => DB localTx { session =>
           f(request)(validated)(session)
         }
-        case _ => println(s"${request.body}"); BadRequest("")
+        case Success(JsError(errors)) => BadRequest(s"parse error: $errors")
+        case _ => BadRequest("not json?")
       }
     }
   }
@@ -65,7 +65,7 @@ class Application(override val env: RuntimeEnvironment[model.User]) extends Secu
 
   implicit val ar: Reads[AccountUpdateRequest] = (
     (__ \ "name").readNullable[String] and
-      (__ \ "age").readNullable[Int]
+      (__ \ "age").read[Int]
     )(AccountUpdateRequest)
 
   def sample = TxSecuredAction { request => implicit session =>
@@ -93,7 +93,7 @@ class Application(override val env: RuntimeEnvironment[model.User]) extends Secu
   }
 }
 
-case class AccountUpdateRequest(name: Option[String], age: Option[Int])
+case class AccountUpdateRequest(name: Option[String], age: Int)
 
 
 @deprecated
