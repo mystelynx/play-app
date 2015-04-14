@@ -3,6 +3,7 @@ package controllers
 import java.util.UUID
 
 import play.api.Logger
+import play.api.data.validation.ValidationError
 import play.api.libs.iteratee.Iteratee
 import play.api.libs.json.Reads._
 import play.api.libs.json._
@@ -28,7 +29,7 @@ class SecuredController(override val env: RuntimeEnvironment[model.User])
   extends SecureSocial[model.User] {
 
   case class ErrorHandling[A](action: Action[A])
-                                (recovering: PartialFunction[Throwable, Result]) extends Action[A] {
+                             (recovering: PartialFunction[Throwable, Result]) extends Action[A] {
     def apply(request: Request[A]): Future[Result] = action(request) recover {
       recovering
     }
@@ -43,8 +44,8 @@ class SecuredController(override val env: RuntimeEnvironment[model.User])
    * @return
    */
   def RecoverableTxSecuredAction[A](bp: BodyParser[A])
-            (f: SecuredRequest[A] => DBSession => Result)
-            (recovering: PartialFunction[Throwable, Result] = Map.empty) = ErrorHandling {
+                                   (f: SecuredRequest[A] => DBSession => Result)
+                                   (recovering: PartialFunction[Throwable, Result] = Map.empty) = ErrorHandling {
     SecuredAction(bp) { request =>
       Logger.debug(s"calling by ${request.authenticator}")
       DB localTx { session =>
@@ -58,16 +59,17 @@ class SecuredController(override val env: RuntimeEnvironment[model.User])
   }
 
   def tryJsonParser[J](implicit reads: Reads[J]) = BodyParsers.parse.tolerantText.map { txt =>
-    Try(Json.parse(txt).validate[J])
+    Try(Json.parse(txt).validate[J]) match {
+      case Success(JsSuccess(value, path)) => JsonRequest[J](Some(value))
+      case Success(JsError(errors)) => JsonRequest[J](None, errors.map { case (jp, errs) => (jp.toString -> errs) })
+      case Failure(y) => JsonRequest[J](None, Seq("" -> Seq(ValidationError("not.json"))))
+    }
   }
+
 }
 
-class ErrorHandlingAction[A] extends ActionBuilder[Request] {
-  override def invokeBlock[A](request: Request[A], block: Request[A] => Future[Result]): Future[Result] =
-    block(request) recover {
-      ???
-    }
-}
+case class JsonRequest[+R](obj: Option[R] = None, errors: Seq[(String, Seq[ValidationError])] = Nil)
+case class AccountUpdateRequest(name: Option[String], age: Int)
 
 /**
  * サンプルApplication
@@ -88,12 +90,13 @@ class Application(override val env: RuntimeEnvironment[model.User]) extends Secu
     println(request.user)
     println(request.authenticator)
 
+
     sql"select * from users".map(_.toMap).list.apply
     sql"delete from users".update.apply
 
     Ok(views.html.index("Your new application is ready!!!!"))
   } {
-    case _ => InternalServerError("")
+    case ex: IllegalStateException => Logger.warn(s"$ex"); BadRequest("(-__-)")
   }
 
 
@@ -104,11 +107,6 @@ class Application(override val env: RuntimeEnvironment[model.User]) extends Secu
       println(request.authenticator)
       println(request.body)
 
-      request.body match {
-        case Success(JsSuccess(value, path)) => println(value)
-        case _ => throw new IllegalStateException("parse error")
-      }
-
       sql"select * from users".map(_.toMap).list.apply
       sql"delete from users".update.apply
 
@@ -116,12 +114,9 @@ class Application(override val env: RuntimeEnvironment[model.User]) extends Secu
   } {
     // bodyParser内で発生した例外については相変わらず取れない、、、
     // あくまでAction内で発生した例外のみだが、処理すべき例外を列挙できる
-    case ex: IllegalArgumentException => Logger.warn(s"$ex"); Conflict("hoge")
+    case ex: IllegalStateException => Logger.warn(s"$ex"); Conflict("hoge")
   }
 }
-
-case class AccountUpdateRequest(name: Option[String], age: Int)
-
 
 @deprecated
 class MyUserService extends UserService[model.User] {
@@ -233,3 +228,4 @@ class MyUserService extends UserService[model.User] {
     ???
   }
 }
+
