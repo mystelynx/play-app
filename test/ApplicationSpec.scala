@@ -46,7 +46,7 @@ class ApplicationSpec extends Specification {
     "render the index page(post)" in new WithAuthenticatedApplication {
 
       val home = route(FakeRequest(POST, "/").withTextBody(
-        """{"ages": 200}""").withHeaders(CONTENT_TYPE->ContentTypes.JSON)).get
+        """{"age": 200""").withHeaders(CONTENT_TYPE->ContentTypes.JSON)).get
 
       println(contentAsString(home))
       status(home) must equalTo(OK)

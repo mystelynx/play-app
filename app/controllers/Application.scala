@@ -60,15 +60,17 @@ class SecuredController(override val env: RuntimeEnvironment[model.User])
 
   def tryJsonParser[J](implicit reads: Reads[J]) = BodyParsers.parse.tolerantText.map { txt =>
     Try(Json.parse(txt).validate[J]) match {
-      case Success(JsSuccess(value, path)) => JsonRequest[J](Some(value))
-      case Success(JsError(errors)) => JsonRequest[J](None, errors.map { case (jp, errs) => (jp.toString -> errs) })
-      case Failure(y) => JsonRequest[J](None, Seq("" -> Seq(ValidationError("not.json"))))
+      case Success(JsSuccess(value, path)) => RequestParseResult[J](Some(value))
+      case Success(JsError(errors)) => RequestParseResult[J](None, errors.map { case (jp, errs) => (jp.toString -> errs) })
+      case Failure(y) => RequestParseResult[J](None, Seq("" -> Seq(ValidationError("not.json"))))
     }
   }
 
 }
 
-case class JsonRequest[+R](obj: Option[R] = None, errors: Seq[(String, Seq[ValidationError])] = Nil)
+case class RequestParseResult[+R](obj: Option[R] = None, errors: Seq[(String, Seq[ValidationError])] = Nil) {
+  def isError = errors != Nil
+}
 case class AccountUpdateRequest(name: Option[String], age: Int)
 
 /**
@@ -107,6 +109,8 @@ class Application(override val env: RuntimeEnvironment[model.User]) extends Secu
       println(request.authenticator)
       println(request.body)
 
+      if (request.body.isError) throw new IllegalArgumentException(s"${request.body.errors}")
+
       sql"select * from users".map(_.toMap).list.apply
       sql"delete from users".update.apply
 
@@ -114,7 +118,8 @@ class Application(override val env: RuntimeEnvironment[model.User]) extends Secu
   } {
     // bodyParser内で発生した例外については相変わらず取れない、、、
     // あくまでAction内で発生した例外のみだが、処理すべき例外を列挙できる
-    case ex: IllegalStateException => Logger.warn(s"$ex"); Conflict("hoge")
+    //TODO errorオブジェクトが決まった形で渡ってくるなら共通化できる
+    case ex: IllegalArgumentException => Logger.warn(s"$ex"); Conflict("hoge")
   }
 }
 
