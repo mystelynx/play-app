@@ -2,20 +2,29 @@ package controllers
 
 import java.util.UUID
 
+import entity.ID
 import play.api.Logger
-import play.api.data.validation.ValidationError
+import play.api.data.Form
+import play.api.data.Forms._
+import play.api.data.validation.{Invalid, Valid, Constraint, ValidationError}
+import play.api.i18n.Messages
 import play.api.libs.iteratee.Iteratee
 import play.api.libs.json.Reads._
 import play.api.libs.json._
 import play.api.libs.functional.syntax._
 import play.api.mvc._
+import repository.{MailTokenResourceRepository, MailTokenEventRepository}
+import scaldi.{Injectable, Injector}
 import scalikejdbc._
+import securesocial.controllers.BaseRegistration._
+import securesocial.controllers.{RegistrationInfo, BaseRegistration}
 import securesocial.core.java.SecuredAction
-import securesocial.core.providers.MailToken
-import securesocial.core.providers.utils.PasswordHasher
+import securesocial.core.providers.{UsernamePasswordProvider, MailToken}
+import securesocial.core.providers.utils.{PasswordValidator, PasswordHasher}
 import securesocial.core.services._
 import securesocial.core.services.SaveMode._
 import securesocial.core._
+import scala.collection.immutable.ListMap
 import scala.concurrent.ExecutionContext.Implicits._
 import scala.concurrent.Future
 import scala.util.{Failure, Success, Try}
@@ -23,10 +32,8 @@ import scala.util.{Failure, Success, Try}
 /**
  * SecureSocialを利用したコントローラ
  *
- * @param env
  */
-class SecuredController(override val env: RuntimeEnvironment[model.User])
-  extends SecureSocial[model.User] {
+abstract class SecuredController extends SecureSocial[model.User] {
 
   case class ErrorHandling[A](action: Action[A])
                              (recovering: PartialFunction[Throwable, Result]) extends Action[A] {
@@ -44,12 +51,13 @@ class SecuredController(override val env: RuntimeEnvironment[model.User])
    * @return
    */
   def RecoverableTxSecuredAction[A](bp: BodyParser[A])
-                                   (f: SecuredRequest[A] => DBSession => Result)
+                                   (f: SecuredRequest[A] => model.User => DBSession => Result)
                                    (recovering: PartialFunction[Throwable, Result] = Map.empty) = ErrorHandling {
     SecuredAction(bp) { request =>
       Logger.debug(s"calling by ${request.authenticator}")
       DB localTx { session =>
-        f(request)(session)
+        val user: model.User = model.User("foo")
+        f(request)(user)(session)
       }
     }
   } {
@@ -73,25 +81,47 @@ case class RequestParseResult[+R](obj: Option[R] = None, errors: Seq[(String, Se
 }
 case class AccountUpdateRequest(name: Option[String], age: Int)
 
+class ApplicationRuntimeEnvironment extends RuntimeEnvironment.Default[model.User] {
+  protected override def include(p: IdentityProvider) = p.id ->   p
+
+  override lazy val userService: UserService[model.User] = new MyUserService
+  override lazy val providers = ListMap(
+    include(new UsernamePasswordProvider[model.User](
+      userService, None, viewTemplates, passwordHashers))
+  )
+
+  //  override lazy val viewTemplates
+  //  = new plugins.CustomTemplates(this) /// <====追加
+}
+
 /**
  * サンプルApplication
  * SecuredControllerのサブクラスとすることで`TxSecuredAction`が利用可能となる
  *
- * @param env
  */
-class Application(override val env: RuntimeEnvironment[model.User]) extends SecuredController(env) {
+class ApplicationImpl(implicit inj: Injector) extends Application with Injectable {
 
+  implicit val env = inject[RuntimeEnvironment[model.User]]
+
+  val mailTokenResourceRepository = inject[MailTokenResourceRepository]
+
+}
+trait Application extends SecuredController {
+
+  def mailTokenResourceRepository: MailTokenResourceRepository
 
   implicit val ar: Reads[AccountUpdateRequest] = (
     (__ \ "name").readNullable[String] and
       (__ \ "age").read[Int]
     )(AccountUpdateRequest)
 
-  def sample = RecoverableTxSecuredAction(parse.empty) { implicit request => implicit session =>
+  def sample = RecoverableTxSecuredAction(parse.empty) {
+    request => user => implicit session =>
 
     println(request.user)
     println(request.authenticator)
 
+      mailTokenResourceRepository.findBy(ID(UUID.randomUUID()))
 
     sql"select * from users".map(_.toMap).list.apply
     sql"delete from users".update.apply
@@ -103,7 +133,7 @@ class Application(override val env: RuntimeEnvironment[model.User]) extends Secu
 
 
   def elpmas = RecoverableTxSecuredAction(tryJsonParser[AccountUpdateRequest]) {
-    implicit request => implicit session =>
+    request => user => implicit session =>
 
       println(request.user)
       println(request.authenticator)
@@ -121,6 +151,34 @@ class Application(override val env: RuntimeEnvironment[model.User]) extends Secu
     //TODO errorオブジェクトが決まった形で渡ってくるなら共通化できる
     case ex: IllegalArgumentException => Logger.warn(s"$ex"); Conflict("hoge")
   }
+}
+
+class RegistrationImpl(implicit inj: Injector) extends BaseRegistration[model.User] with Injectable {
+  implicit val env = inject[RuntimeEnvironment[model.User]]
+
+  // 諸事情によりオーバーライド
+  override val form = Form[RegistrationInfo](
+    mapping(
+      FirstName -> nonEmptyText,
+      LastName -> nonEmptyText,
+      Password ->
+        tuple(
+          Password1 -> nonEmptyText.verifying(Constraint[String] {
+                // PasswordValidator.constraint(implicit env: RuntimeEnvironment[_])
+                // がstaticメソッドであるためどうにもならない。
+                // そのため、injectされたenvを使用するためにオーバーライドしています。
+            s: String =>
+              env.passwordValidator.validate(s) match {
+                case Right(_) => Valid
+                case Left(error) => Invalid(error._1, error._2: _*)
+              }
+          }),
+          Password2 -> nonEmptyText
+        ).verifying(Messages(PasswordsDoNotMatch), passwords => passwords._1 == passwords._2)
+    ) // binding
+      ((firstName, lastName, password) => RegistrationInfo(None, firstName, lastName, password._1)) // unbinding
+      (info => Some((info.firstName, info.lastName, ("", ""))))
+  )
 }
 
 @deprecated

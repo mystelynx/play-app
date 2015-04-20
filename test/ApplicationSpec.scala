@@ -3,7 +3,7 @@ import javax.mail.Multipart
 
 import com.icegreen.greenmail.util._
 import controllers.MyUserService
-import helpers.{WithUnauthenticatedApplication, FakeUserService, WithAuthenticatedApplication, FakeGlobal}
+import helpers._
 import org.joda.time.DateTime
 import org.specs2.execute.{Result, AsResult}
 import org.specs2.mutable._
@@ -16,10 +16,15 @@ import play.api.test.Helpers._
 import play.filters.csrf.CSRF
 import securesocial.controllers._
 import securesocial.core.RuntimeEnvironment.Default
+import securesocial.core.providers.UsernamePasswordProvider
 import securesocial.core.services._
 import securesocial.core._
 
 import scalikejdbc._
+
+import scala.concurrent.ExecutionContext.Implicits.global
+
+import scala.collection.immutable.ListMap
 
 /**
  * Add your spec here.
@@ -46,7 +51,7 @@ class ApplicationSpec extends Specification {
     "render the index page(post)" in new WithAuthenticatedApplication {
 
       val home = route(FakeRequest(POST, "/").withTextBody(
-        """{"age": 200""").withHeaders(CONTENT_TYPE->ContentTypes.JSON)).get
+        """{"age": 200}""").withHeaders(CONTENT_TYPE->ContentTypes.JSON)).get
 
       println(contentAsString(home))
       status(home) must equalTo(OK)
@@ -65,7 +70,7 @@ class ApplicationSpec extends Specification {
 
     "サインアップページを表示する" in new WithUnauthenticatedApplication {
       // exec
-      val signup = route(FakeRequest(GET, "/auth/signup")).get
+      val signup = route(FakeRequest(GET, "/signup")).get
 
       // then
       status(signup) must be_==(OK)
@@ -80,7 +85,7 @@ class ApplicationSpec extends Specification {
       val csrfToken = CSRF.SignedTokenProvider.generateToken
 
       // when
-      val signup = route(FakeRequest(POST, "/auth/signup")
+      val signup = route(FakeRequest(POST, "/signup")
         .withFormUrlEncodedBody("email" -> "test@urau.la", "csrfToken" -> csrfToken)
         .withSession("csrfToken" -> csrfToken)
       ).get
@@ -101,9 +106,9 @@ class ApplicationSpec extends Specification {
 
       val part0 = part.getBodyPart(0)
       part0.getContentType must be_==("text/html; charset=UTF-8")
-      part0.getContent.asInstanceOf[String] must contain("/auth/signup/")
+      part0.getContent.asInstanceOf[String] must contain("/signup/")
 
-      val tokenRegex = "//auth/signup/([a-f0-9-]{36})".r
+      val tokenRegex = "//signup/([a-f0-9-]{36})".r
       val token = tokenRegex.findFirstMatchIn(part0.getContent.toString).map(_.group(1))
     }
 
@@ -114,11 +119,11 @@ class ApplicationSpec extends Specification {
       val token = storedTokens.head
 
       // when
-      val signup = route(FakeRequest(GET, s"/auth/signup/$token")).get
+      val signup = route(FakeRequest(GET, s"/signup/$token")).get
 
       // then
       status(signup) must be_==(OK)
-      contentAsString(signup) must contain(s"/auth/signup/$token")
+      contentAsString(signup) must contain(s"/signup/$token")
     }
 
     "無効なトークンでサインアップページを表示できない" in new WithUnauthenticatedApplication {
@@ -126,7 +131,7 @@ class ApplicationSpec extends Specification {
       val token = "576c4fa9-13a8-4d78-86fc-60173afecf8b"
 
       // when
-      val signup = route(FakeRequest(GET, s"/auth/signup/$token")).get
+      val signup = route(FakeRequest(GET, s"/signup/$token")).get
 
       // then
       status(signup) must be_==(SEE_OTHER)
@@ -142,7 +147,7 @@ class ApplicationSpec extends Specification {
 
       val csrfToken = CSRF.SignedTokenProvider.generateToken
 
-      val signup = route(FakeRequest(POST, s"/auth/signup/$token")
+      val signup = route(FakeRequest(POST, s"/signup/$token")
         .withFormUrlEncodedBody(
           "firstName" -> "田中",
           "lastName" -> "太郎",
@@ -166,7 +171,7 @@ class ApplicationSpec extends Specification {
 
       val part0 = part.getBodyPart(0)
       part0.getContentType must be_==("text/html; charset=UTF-8")
-      part0.getContent.asInstanceOf[String] must contain("/auth/login")
+      part0.getContent.asInstanceOf[String] must contain("/login")
     }
   }
 }

@@ -8,16 +8,19 @@ import scala.util.{Failure, Try}
 /**
  * Created by tomohiro_urakawa on 15/04/11.
  */
-trait EventRepository[E <: Entity[Identifier[_], _ <: Status]] {
+trait EventRepository[E <: Entity[Identifier[_], _ <: Status] with EventEntity] {
 
-  def put(event: E)(implicit dbSession: DBSession): Try[E]
+  final def put(event: E)(implicit dbSession: DBSession): Try[E] =
+    Try(doPut(event)(dbSession).ensuring(_.id.isDefined))
+
+  protected def doPut(event: E)(implicit dbSession: DBSession): E
 }
 
-abstract class SimpleEventRepository[E <: Entity[Identifier[Long], _ <: Status]]
+abstract class SimpleEventRepository[E <: Entity[Identifier[Long], _ <: Status] with EventEntity]
   extends EventRepository[E] {
 }
 
-trait ResourceRepository[I <: Identifier[_], E <: Entity[I, _ <: Status]] {
+trait ResourceRepository[I <: Identifier[_], E <: Entity[I, _ <: Status] with ResourceEntity] {
 
   type Syntax = QuerySQLSyntaxProvider[SQLSyntaxSupport[E], E] => SQLSyntax
 
@@ -30,8 +33,8 @@ trait ResourceRepository[I <: Identifier[_], E <: Entity[I, _ <: Status]] {
              (implicit dbSession: DBSession): Seq[E]
 }
 
-abstract class SimpleResourceRepository[I <: Identifier[_], E <: Entity[I, _ <: Status]]
-  extends ResourceRepository[I, E] {
+abstract class SimpleResourceRepository[I <: Identifier[_],
+  E <: Entity[I, _ <: Status] with ResourceEntity] extends ResourceRepository[I, E] {
 
   def findAllMatching(whereClause: Syntax)
                      (pagingClause: Syntax = defaultPagingClause)
@@ -39,7 +42,8 @@ abstract class SimpleResourceRepository[I <: Identifier[_], E <: Entity[I, _ <: 
     findAll(Some(whereClause))(pagingClause)(dBSession)
 }
 
-trait ResourceRepository2[I <: Identifier[_], E <: Entity[I, _ <: Status], F1 <: Entity[_ <: Identifier[_], _ <: Status]] {
+trait ResourceRepository2[I <: Identifier[_], E <: Entity[I, _ <: Status] with ResourceEntity,
+  F1 <: Entity[_ <: Identifier[_], _ <: Status]] {
 
   type Syntax = (QuerySQLSyntaxProvider[SQLSyntaxSupport[E], E],
     QuerySQLSyntaxProvider[SQLSyntaxSupport[F1], F1]) => SQLSyntax
@@ -53,8 +57,8 @@ trait ResourceRepository2[I <: Identifier[_], E <: Entity[I, _ <: Status], F1 <:
              (implicit dbSession: DBSession = AutoSession): Seq[E]
 }
 
-abstract class SimpleResourceRepository2[I <: Identifier[_], E<: Entity[I, _ <: Status], F1 <: Entity[_ <: Identifier[_], _ <: Status]]
-  extends ResourceRepository2[I, E, F1] {
+abstract class SimpleResourceRepository2[I <: Identifier[_], E<: Entity[I, _ <: Status] with ResourceEntity,
+  F1 <: Entity[_ <: Identifier[_], _ <: Status]] extends ResourceRepository2[I, E, F1] {
 
   def findAllMatching(whereClause: Syntax)
                      (pagingClause: Syntax = defaultPagingClause)

@@ -21,7 +21,7 @@ val libraries = Seq (
   "org.mindrot" % "jbcrypt" % "0.3m",
   "org.postgresql" % "postgresql" % "9.2-1004-jdbc41" % "runtime",
   "ws.securesocial" %% "securesocial" % "3.0-M3",
-//  "ws.securesocial" %% "testkit" % "master-SNAPSHOT" % "test",
+  "org.scaldi" %% "scaldi-play" % "0.5.4",
   "com.typesafe.play" %% "play-mailer" % "2.4.0",
   "com.icegreen" % "greenmail" % "1.4.0" % "test"
 )

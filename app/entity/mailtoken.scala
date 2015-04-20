@@ -8,13 +8,15 @@ import scalikejdbc._
 /**
  * Created by tomohiro_urakawa on 15/04/12.
  */
+sealed trait MailTokenEntity[I] extends Entity[Identifier[I], SimpleStatus]
 case class MailToken(
                     id: Identifier[UUID],
                     email: String,
                     createdAt: DateTime,
                     expiresAt: DateTime,
                     isSignup: Boolean,
-                    status: SimpleStatus) extends Entity[Identifier[UUID], SimpleStatus]
+                    status: SimpleStatus)
+  extends MailTokenEntity[UUID] with ResourceEntity
 
 object MailToken extends SQLSyntaxSupport[MailToken] with IdentifierTypeBinderSupport
   with SimpleStatusTypeBinderSupport {
@@ -41,7 +43,8 @@ case class MailTokenEvent(
                          createdAt: DateTime,
                          expiresAt: DateTime,
                          isSignup: Boolean,
-                         status: SimpleStatus) extends Entity[Identifier[Long], SimpleStatus]
+                         status: SimpleStatus)
+  extends MailTokenEntity[Long] with EventEntity
 
 object MailTokenEvent extends SQLSyntaxSupport[MailTokenEvent] with IdentifierTypeBinderSupport
   with SimpleStatusTypeBinderSupport {

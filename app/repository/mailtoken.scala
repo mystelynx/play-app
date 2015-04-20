@@ -10,7 +10,7 @@ import scala.util.Try
 /**
  * Created by tomohiro_urakawa on 15/04/12.
  */
-class MailTokenResourceRepository extends SimpleResourceRepository[Identifier[UUID], MailToken] {
+trait MailTokenResourceRepository extends SimpleResourceRepository[Identifier[UUID], MailToken] {
 
   override val defaultPagingClause: Syntax = m =>
     SQLSyntax.orderBy(m.createdAt.desc, m.expiresAt.desc).limit(1000).offset(0)
@@ -23,9 +23,10 @@ class MailTokenResourceRepository extends SimpleResourceRepository[Identifier[UU
     }.map(MailToken(m)).list.apply
   }
 }
+class MailTokenResourceRepositoryImpl extends MailTokenResourceRepository
 
-class MailTokenEventRepository extends SimpleEventRepository[MailTokenEvent] {
-  override def put(event: MailTokenEvent)(implicit dbSession: DBSession): Try[MailTokenEvent] = Try {
+trait MailTokenEventRepository extends SimpleEventRepository[MailTokenEvent] {
+  override def doPut(event: MailTokenEvent)(implicit dbSession: DBSession): MailTokenEvent = {
     val registered = withSQL {
       val c = MailTokenEvent.column
       insert into MailToken namedValues(
@@ -41,3 +42,4 @@ class MailTokenEventRepository extends SimpleEventRepository[MailTokenEvent] {
     event.copy(id = ID(registered))
   }
 }
+class MailTokenEventRepositoryImpl extends MailTokenEventRepository

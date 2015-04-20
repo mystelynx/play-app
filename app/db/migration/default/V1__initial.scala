@@ -39,6 +39,33 @@ class V1__initial extends MigrationBase {
       """.update.apply
 
       sql"""
+      drop table if exists friends;
+      create table friends (
+        id uuid primary key,
+        user_id uuid not null,
+        friend_user_id uuid not null,
+        status varchar(16) not null,
+        registered_at timestamp not null,
+        FOREIGN key (user_id) REFERENCES users(id),
+        FOREIGN key (friend_user_id) REFERENCES users(id)
+      );
+      """.update.apply
+
+      sql"""
+      drop table if exists friend_events;
+      create table friend_events (
+        id bigserial primary key,
+        friend_id uuid not null,
+        user_id uuid not null,
+        friend_user_id uuid not null,
+        status varchar(16) not null,
+        registered_at timestamp not null,
+        updated_by uuid not null,
+        updated_at timestamp not null
+      );
+      """.update.apply
+
+      sql"""
       drop table if exists mail_tokens;
       create table mail_tokens (
         id uuid primary key,

@@ -3,13 +3,16 @@
 # ~~~~
 
 # Home page
-GET        /                    @controllers.Application.sample
-POST        /                   @controllers.Application.elpmas
+GET         /                         @controllers.ApplicationImpl.sample
+POST        /                         @controllers.ApplicationImpl.elpmas
 
 # SecureSocial
-->         /auth                securesocial.Routes
+#->         /auth                securesocial.Routes
+GET         /signup                   @controllers.RegistrationImpl.startSignUp
+POST        /signup                   @controllers.RegistrationImpl.handleStartSignUp
+GET         /signup/:mailToken        @controllers.RegistrationImpl.signUp(mailToken)
+POST        /signup/:mailToken        @controllers.RegistrationImpl.handleSignUp(mailToken)
 
 # Map static resources from the /public folder to the /assets URL path
-GET        /assets/*file        controllers.Assets.at(path="/public", file)
+GET         /assets/*file             controllers.Assets.at(path="/public", file)
 
-    

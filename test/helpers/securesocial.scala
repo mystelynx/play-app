@@ -3,15 +3,21 @@ package helpers
 import java.lang.reflect.Constructor
 
 import com.icegreen.greenmail.util.{ServerSetupTest, GreenMail}
+import config.Global
 import model.User
 import org.joda.time.DateTime
 import org.specs2.execute.{Result => SpecResult, AsResult}
 import play.api.mvc.{RequestHeader, Result => ApiResult}
 import play.api.test.{FakeApplication, WithApplication}
-import play.api.{Logger, Application, GlobalSettings}
+import play.api.{Logger, GlobalSettings}
+import repository.{MailTokenResourceRepositoryImpl, MailTokenResourceRepository}
+import scaldi.Module
+import scaldi.play.ControllerInjector
+import securesocial.core.RuntimeEnvironment.Default
 import securesocial.core.authenticator.{Authenticator, AuthenticatorBuilder, StoreBackedAuthenticator, AuthenticatorStore}
+import securesocial.core.providers.utils.PasswordValidator
 import securesocial.core.providers.{MailToken, UsernamePasswordProvider}
-import securesocial.core.services.{SaveMode, AuthenticatorService, UserService}
+import securesocial.core.services.{RoutesService, SaveMode, AuthenticatorService, UserService}
 import securesocial.core.{PasswordInfo, BasicProfile, IdentityProvider, RuntimeEnvironment}
 
 import scala.collection.immutable.ListMap
@@ -29,7 +35,7 @@ abstract class WithAuthenticatedApplication(
                                              val by: Option[model.User] = Some(model.User("fake-man")),
                                              val storedTokens: Set[String] = Set())
   extends WithApplication(app = FakeApplication(
-    withGlobal = Some(FakeGlobal(by, storedTokens)))) {
+    withGlobal = Some(new FakeGlobal(by, storedTokens)))) {
 
   lazy val greenMail = new GreenMail(ServerSetupTest.SMTP)
 
@@ -53,41 +59,35 @@ abstract class WithUnauthenticatedApplication(
                                                )
   extends WithAuthenticatedApplication(None, storedTokens)
 
-/**
- * テスト用のGlobal
- *
- * @param user 認証対象のユーザ
- * @param storedTokens 有効なメールトークン
- */
-case class FakeGlobal(user: Option[model.User], storedTokens: Set[String]) extends GlobalSettings {
+class FakeGlobal(byUser: Option[model.User], storedTokens: Set[String]) extends Global {
+  override def applicationModule = new ControllerInjector :: new Module {
+    bind[RuntimeEnvironment[model.User]] to new Default[User] {
+      protected override def include(p: IdentityProvider) = p.id -> p
 
-  // Fakeであることが分かるようログに出力しておく
-  override def onStart(app: Application) = Logger.debug("running with FakeGlobal.")
+      override lazy val userService: UserService[model.User] =
+        new FakeUserService(storedTokens)
+      override lazy val providers = ListMap(
+        include(new UsernamePasswordProvider[model.User](
+          userService, None, viewTemplates, passwordHashers))
+      )
 
-  // for securesocial
-  override def getControllerInstance[A](controllerClass: Class[A]): A = {
-    val instance  = controllerClass.getConstructors.find { c =>
-      val params = c.getParameterTypes
-      params.length == 1 && params(0) == classOf[RuntimeEnvironment[model.User]]
-    }.map {
-      _.asInstanceOf[Constructor[A]].newInstance(ApplicationRuntimeEnvironment)
+      override lazy val authenticatorService = new AuthenticatorService(
+        new PassThroughAuthenticatorBuilder(byUser)
+      )
+
+      override lazy val routes = new RoutesService.Default {
+        override def startSignUpUrl(implicit req: RequestHeader): String =
+          absoluteUrl(controllers.routes.RegistrationImpl.startSignUp)
+        override def handleStartSignUpUrl(implicit req: RequestHeader): String =
+          absoluteUrl(controllers.routes.RegistrationImpl.handleStartSignUp)
+        override def signUpUrl(mailToken: String)(implicit req: RequestHeader): String =
+          absoluteUrl(controllers.routes.RegistrationImpl.signUp(mailToken))
+        override def handleSignUpUrl(mailToken: String)(implicit req: RequestHeader): String =
+          absoluteUrl(controllers.routes.RegistrationImpl.handleSignUp(mailToken))
+      }
     }
-    instance.getOrElse(super.getControllerInstance(controllerClass))
-  }
-
-  // for securesocial
-  object ApplicationRuntimeEnvironment extends RuntimeEnvironment.Default[model.User] {
-    protected override def include(p: IdentityProvider) = p.id -> p
-
-    override lazy val userService: UserService[model.User] = new FakeUserService(storedTokens)
-    override lazy val providers = ListMap(
-      include(new UsernamePasswordProvider[model.User](
-        userService, None, viewTemplates, passwordHashers))
-    )
-
-    override lazy val authenticatorService = new AuthenticatorService(
-      new PassThroughAuthenticatorBuilder(user)
-    )
+  } :: new Module {
+    bind[MailTokenResourceRepository] to new MailTokenResourceRepositoryImpl
   }
 }
 

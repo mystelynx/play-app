@@ -11,7 +11,7 @@ import scalikejdbc.TypeBinder
  * @tparam I ID
  * @tparam S ステータス
  */
-abstract class Entity[+I <: Identifier[_], +S <: Status] {
+trait Entity[+I <: Identifier[_], +S <: Status] {
   val id: I
   val status: S
 
@@ -21,6 +21,10 @@ abstract class Entity[+I <: Identifier[_], +S <: Status] {
   }
   override def hashCode = 31 * id.##
 }
+
+// marker
+trait ResourceEntity
+trait EventEntity
 
 /**
  * ステータスの定義

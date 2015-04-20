@@ -3,6 +3,7 @@ import java.lang.reflect.Constructor
 import model.User
 import org.joda.time.DateTime
 import org.specs2.mutable._
+import play.api.libs.json.Json
 import play.api.{Application, Logger, GlobalSettings}
 import play.api.mvc.RequestHeader
 import play.api.test.Helpers._
@@ -34,11 +35,11 @@ class IntegrationSpec extends Specification {
 
     "render the index page" in new WithApplication(app = fakeApp) {
 
-      val home = route(FakeRequest(GET, "/sample")).get
+      val home = route(FakeRequest(GET, "/")).get
 
-      status(home) must equalTo(OK)
-      contentType(home) must beSome.which(_ == "text/html")
-      contentAsString(home) must contain ("Your new application is ready.")
+      status(home) must equalTo(UNAUTHORIZED)
+      contentType(home) must beSome.which(_ == "application/json")
+      contentAsJson(home) must be_==(Json.obj("error"->"Credentials required"))
     }
   }
 }
