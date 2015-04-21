@@ -23,12 +23,13 @@ abstract class SimpleEventRepository[E <: Entity[Identifier[Long], _ <: Status] 
 trait ResourceRepository[I <: Identifier[_], E <: Entity[I, _ <: Status] with ResourceEntity] {
 
   type Syntax = QuerySQLSyntaxProvider[SQLSyntaxSupport[E], E] => SQLSyntax
+  type SyntaxOpt = QuerySQLSyntaxProvider[SQLSyntaxSupport[E], E] => Option[SQLSyntax]
 
   val defaultPagingClause: Syntax
 
   def findBy(id: I)(implicit dbSession: DBSession): Option[E] =
-    findAll(Some(e => SQLSyntax.eq(e.id, id.get)))()(dbSession).ensuring(_.size <= 1).headOption
-  def findAll(whereClause: Option[Syntax])
+    findAll(e => Some(SQLSyntax.eq(e.id, id.get)))()(dbSession).ensuring(_.size <= 1).headOption
+  def findAll(whereClause: SyntaxOpt)
              (pagingClause: Syntax = defaultPagingClause)
              (implicit dbSession: DBSession): Seq[E]
 }
@@ -39,7 +40,12 @@ abstract class SimpleResourceRepository[I <: Identifier[_],
   def findAllMatching(whereClause: Syntax)
                      (pagingClause: Syntax = defaultPagingClause)
                      (implicit dBSession: DBSession = AutoSession) =
-    findAll(Some(whereClause))(pagingClause)(dBSession)
+    findAll(e => Some(whereClause(e)))(pagingClause)(dBSession)
+
+  def findAllMatchingOpt(whereClause: SyntaxOpt)
+                     (pagingClause: Syntax = defaultPagingClause)
+                     (implicit dbSession: DBSession = AutoSession) =
+    findAll(whereClause)(pagingClause)(dbSession)
 }
 
 trait ResourceRepository2[I <: Identifier[_], E <: Entity[I, _ <: Status] with ResourceEntity,

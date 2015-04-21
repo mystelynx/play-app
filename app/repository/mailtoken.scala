@@ -15,11 +15,11 @@ trait MailTokenResourceRepository extends SimpleResourceRepository[Identifier[UU
   override val defaultPagingClause: Syntax = m =>
     SQLSyntax.orderBy(m.createdAt.desc, m.expiresAt.desc).limit(1000).offset(0)
 
-  override def findAll(whereClause: Option[Syntax])(pagingClause: Syntax)(implicit dbSession: DBSession): Seq[MailToken] = {
+  override def findAll(whereClause: SyntaxOpt)(pagingClause: Syntax)(implicit dbSession: DBSession): Seq[MailToken] = {
     val m = MailToken.syntax
     withSQL {
       select.from(MailToken as m)
-        .where(whereClause.map(_.apply(m))).append(pagingClause(m))
+        .where(whereClause(m)).append(pagingClause(m))
     }.map(MailToken(m)).list.apply
   }
 }

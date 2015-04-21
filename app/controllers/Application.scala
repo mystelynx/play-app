@@ -2,7 +2,8 @@ package controllers
 
 import java.util.UUID
 
-import entity.ID
+import entity.{SimpleStatus, ID}
+import org.joda.time.DateTime
 import play.api.Logger
 import play.api.data.Form
 import play.api.data.Forms._
@@ -120,8 +121,24 @@ trait Application extends SecuredController {
 
     println(request.user)
     println(request.authenticator)
+      val emailOpt = Some("foo@bar.com")
+      val createdAtOpt = Some(DateTime.now)
+      val statusOpt = Some("enabled")
 
-      mailTokenResourceRepository.findBy(ID(UUID.randomUUID()))
+      val orderByOpt = None// Some("created_at")
+      val isDesc = Some("asc").map(_ == "desc").getOrElse(true)
+
+    mailTokenResourceRepository.findAll { m =>
+      Seq(
+        emailOpt.map(email => SQLSyntax.eq(m.email, email)),
+        createdAtOpt.map(createdAt => SQLSyntax.eq(m.createdAt, createdAt)),
+        statusOpt.map(status => SQLSyntax.eq(m.status, status))
+      ).flatten.reduceOption((c1, c2) => sqls"${c1} and ${c2}")
+    } { m =>
+      orderByOpt.map(orderByCol => sqls"order by ${m.column(orderByCol)}")
+        .map(_.append(if (isDesc) SQLSyntax.desc else SQLSyntax.asc))
+      .getOrElse(mailTokenResourceRepository.defaultPagingClause(m))
+    }
 
     sql"select * from users".map(_.toMap).list.apply
     sql"delete from users".update.apply
