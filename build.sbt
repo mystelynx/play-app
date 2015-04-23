@@ -1,3 +1,5 @@
+import play.PlayImport.PlayKeys._
+
 name := "play-app"
 
 version := "1.0"
@@ -47,3 +49,5 @@ fork in IntegrationTest := true
 javaOptions in IntegrationTest += "-Dconfig.resource=application.it.conf"
 
 javaSource in IntegrationTest := baseDirectory( _ / "test-integration").value
+
+routesImport ++= Seq("controllers.Implicits._")

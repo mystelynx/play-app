@@ -5,6 +5,7 @@
 # Home page
 GET         /                         @controllers.ApplicationImpl.sample
 POST        /                         @controllers.ApplicationImpl.elpmas
+GET         /foo                      @controllers.ApplicationImpl.foo(criteria: controllers.AccountListCriteria)
 
 # SecureSocial
 #->         /auth                securesocial.Routes

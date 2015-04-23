@@ -173,5 +173,14 @@ class ApplicationSpec extends Specification {
       part0.getContentType must be_==("text/html; charset=UTF-8")
       part0.getContent.asInstanceOf[String] must contain("/login")
     }
+
+    "render the index page" in new WithApplication {
+
+      val home = route(FakeRequest(GET, "/foo?bar=5&per_page=3&sort=name&name=あほ")).get
+
+      status(home) must equalTo(UNAUTHORIZED)
+      contentType(home) must beSome.which(_ == "application/json")
+      contentAsJson(home) must be_==(Json.obj("error"->"Credentials required"))
+    }
   }
 }

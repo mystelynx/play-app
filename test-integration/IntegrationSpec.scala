@@ -35,7 +35,7 @@ class IntegrationSpec extends Specification {
 
     "render the index page" in new WithApplication(app = fakeApp) {
 
-      val home = route(FakeRequest(GET, "/")).get
+      val home = route(FakeRequest(GET, "/foo")).get
 
       status(home) must equalTo(UNAUTHORIZED)
       contentType(home) must beSome.which(_ == "application/json")

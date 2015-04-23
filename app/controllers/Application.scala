@@ -168,6 +168,12 @@ trait Application extends SecuredController {
     //TODO errorオブジェクトが決まった形で渡ってくるなら共通化できる
     case ex: IllegalArgumentException => Logger.warn(s"$ex"); Conflict("hoge")
   }
+
+  def foo(criteria: AccountListCriteria) = Action { implicit request =>
+    Logger.warn(s"criteria=$criteria")
+
+    Ok("")
+  }
 }
 
 class RegistrationImpl(implicit inj: Injector) extends BaseRegistration[model.User] with Injectable {
