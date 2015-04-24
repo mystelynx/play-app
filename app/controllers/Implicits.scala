@@ -22,9 +22,9 @@ object Implicits {
       val direction = Try(params("direction").headOption.filter(_ == "desc").map(_ => SQLSyntax.desc).get).getOrElse(DefaultDirection)
       val pagingClause = SQLSyntax.orderBy(sort).append(direction).limit(limit).offset(offset)
 
-      val whereClause: SQLSyntax = params.map(m => (m._1, m._2.headOption))
+      val whereClause: Option[SQLSyntax] = params.map(m => (m._1, m._2.headOption))
         .filterKeys(k => whereColumns.keySet.contains(k)).map(k => (whereColumns(k._1), k._2))
-        .toList.headOption.map(m => SQLSyntax.like(m._1, m._2.getOrElse("good"))).get
+        .toList.filter(k => k._2.isDefined).map(k => sqls"${k._1} like '%${k._2}%'").reduceOption((x, y) => sqls"$x and $y")
 
       Some(Right(AccountListCriteria(whereClause, pagingClause)))
     }
@@ -33,7 +33,7 @@ object Implicits {
   }
 }
 
-case class AccountListCriteria(whereClause: SQLSyntax, pagingClause: SQLSyntax)
+case class AccountListCriteria(whereClause: Option[SQLSyntax], pagingClause: SQLSyntax)
 object AccountListCriteria {
   val DefaultPageSize = 100
   val MaxPageSize = 1000
