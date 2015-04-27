@@ -176,7 +176,7 @@ class ApplicationSpec extends Specification {
 
     "render the index page" in new WithApplication {
 
-      val home = route(FakeRequest(GET, "/foo?bar=5&per_page=3&sort=name&name=あほ&agent=ばか")).get
+      val home = route(FakeRequest(GET, "/foo?page=5&per_page=3&sort=name&name=%E3%81%9D%E3%82%93%E3%81%AA%20%E3%81%B0%E3%81%8B%E3%81%AA")).get
 
       status(home) must equalTo(UNAUTHORIZED)
       contentType(home) must beSome.which(_ == "application/json")

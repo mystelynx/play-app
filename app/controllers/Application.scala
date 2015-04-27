@@ -2,6 +2,7 @@ package controllers
 
 import java.util.UUID
 
+import controllers.Implicits.AccountListApiCriteria
 import entity.{SimpleStatus, ID}
 import org.joda.time.DateTime
 import play.api.Logger
@@ -169,7 +170,7 @@ trait Application extends SecuredController {
     case ex: IllegalArgumentException => Logger.warn(s"$ex"); Conflict("hoge")
   }
 
-  def foo(criteria: AccountListCriteria) = Action { implicit request =>
+  def foo(criteria: AccountListApiCriteria) = Action { implicit request =>
     Logger.warn(s"criteria=$criteria")
 
     Ok("")
